@@ -1,12 +1,13 @@
-const CACHE_NAME = 'aviation-v2'; // 버전 업데이트
-const OFFLINE_URL = 'offline.html'; // 오프라인일 때 보여줄 페이지
+const CACHE_NAME = 'aviation-v3'; // 캐시 버전 업데이트
+const OFFLINE_URL = 'offline.html'; 
 const ASSETS = [
-  'index.html',
+  './',                  // 기본 주소 캐시
+  'index.html',          // 통합 파일 이름에 맞게 수정하세요 (예: 통합 v3.0.html 이라면 이름을 영어로 바꾸는 것을 권장)
   'manifest.json',
-  'icon.png',
-  OFFLINE_URL // 오프라인 페이지도 캐시에 미리 저장해야 합니다.
+  'logo.png',            // HTML에 사용된 이미지
+  OFFLINE_URL
 ];
-const TIMEOUT_DURATION = 3000; // 3초 (3000ms)
+const TIMEOUT_DURATION = 3000; 
 
 // ⏱️ 타임아웃이 적용된 커스텀 fetch 함수
 const fetchWithTimeout = async (request, timeout) => {
@@ -14,44 +15,76 @@ const fetchWithTimeout = async (request, timeout) => {
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    // signal을 넘겨주어 timeoutId가 실행되면 fetch를 강제 중단(abort)합니다.
     const response = await fetch(request, { signal: controller.signal });
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
     clearTimeout(timeoutId);
-    throw error; // 타임아웃(가짜 와이파이)이거나 아예 오프라인이면 에러를 던짐
+    throw error; 
   }
 };
 
 self.addEventListener('install', (e) => {
+  self.skipWaiting(); // 새 버전이 즉시 활성화되도록 함
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
 });
 
+self.addEventListener('activate', (e) => {
+  // 이전 버전의 불필요한 캐시 삭제
+  e.waitUntil(
+    caches.keys().then((keyList) => {
+      return Promise.all(keyList.map((key) => {
+        if (key !== CACHE_NAME) {
+          return caches.delete(key);
+        }
+      }));
+    })
+  );
+});
+
 self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+
+  // 🚀 예외 처리: 구글 Apps Script 등 명시적인 API 통신은 무조건 네트워크만 사용!
+  // 캐시를 뒤지지 않고 타임아웃을 적용해 즉시 요청합니다.
+  if (url.hostname.includes('script.google.com') || e.request.method !== 'GET') {
+    e.respondWith(
+      fetchWithTimeout(e.request, 5000).catch(() => {
+        return new Response(JSON.stringify({ result: "error", msg: "오프라인 상태입니다." }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      })
+    );
+    return; // 여기서 종료
+  }
+
+  // 🛡️ 기본 로직: 철저한 Cache-First 전략 (오프라인 완벽 대응)
   e.respondWith(
     (async () => {
-      // 1. 캐시에 파일이 있는지 먼저 확인 (기존 로직 유지, 속도 보장)
+      // 1. 캐시에 파일이 있는지 확인 (있으면 무조건 캐시 반환, 인터넷 접속 안 함)
       const cachedResponse = await caches.match(e.request);
       if (cachedResponse) {
         return cachedResponse;
       }
 
-      // 2. 캐시에 없는 파일이라면 타임아웃이 적용된 네트워크 요청 실행
+      // 2. 캐시에 없는 파일일 경우에만 네트워크 요청 (타임아웃 적용)
       try {
-        return await fetchWithTimeout(e.request, TIMEOUT_DURATION);
-      } catch (error) {
-        // 3. 가짜 와이파이(타임아웃)이거나 완전한 오프라인일 때의 폴백(Fallback) 처리
+        const networkResponse = await fetchWithTimeout(e.request, TIMEOUT_DURATION);
         
-        // 사용자가 새로운 HTML 페이지로 이동하려고 했던 거라면 (mode === 'navigate')
+        // (선택) 외부에서 불러온 폰트/이미지 등도 다음에 오프라인에서 쓰기 위해 캐시에 동적 저장
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(e.request, networkResponse.clone());
+        
+        return networkResponse;
+      } catch (error) {
+        // 3. 가짜 와이파이이거나 완전 오프라인일 때의 처리
         if (e.request.mode === 'navigate') {
-          return await caches.match(OFFLINE_URL); // 미리 캐시해둔 오프라인 안내 페이지를 보여줌
+          return await caches.match(OFFLINE_URL); 
         }
         
-        // 이미지, API 데이터 등 다른 종류의 요청이 실패했을 때 에러 응답 반환
-        return new Response('오프라인 상태이거나 네트워크가 불안정합니다.', {
+        return new Response('오프라인 상태이거나 자원을 찾을 수 없습니다.', {
           status: 503,
           statusText: 'Service Unavailable'
         });
