@@ -1,6 +1,6 @@
 {
-  "name": "운항자격심사 안내",
-  "short_name": "운항심사",
+  "name": "운항자격심사표",
+  "short_name": "운항자격심사표",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -17,4 +17,5 @@
       "type": "image/png"
     }
   ]
+
 }
