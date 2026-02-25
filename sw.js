@@ -1,4 +1,4 @@
-const CACHE_NAME = 'Checksheet-v2'; // 캐시 버전 업데이트
+const CACHE_NAME = 'Checksheet-v3'; // 캐시 버전 업데이트
 const OFFLINE_URL = 'offline.html'; 
 const ASSETS = [
   './',                  // 기본 주소 캐시
@@ -93,6 +93,7 @@ self.addEventListener('fetch', (e) => {
   );
 
 });
+
 
 
 
